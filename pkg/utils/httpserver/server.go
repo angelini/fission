@@ -4,13 +4,19 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"go.uber.org/zap"
 )
 
-func StartServer(ctx context.Context, log *zap.Logger, svc string, port string, handler http.Handler) {
+func StartServer(ctx context.Context, log *zap.Logger, svc string, hostAndPort string, handler http.Handler) {
+	addr := hostAndPort
+	if !strings.Contains(addr, ":") {
+		addr = fmt.Sprintf(":%s", hostAndPort)
+	}
+
 	server := http.Server{
-		Addr:    fmt.Sprintf(":%s", port),
+		Addr:    addr,
 		Handler: handler,
 	}
 	l := log.With(zap.String("service", svc), zap.String("addr", server.Addr))
