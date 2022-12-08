@@ -56,6 +56,9 @@ func GetKubernetesClient() (*rest.Config, kubernetes.Interface, apiextensionscli
 		}
 	}
 
+	config.QPS = 20
+	config.Burst = 50
+
 	// creates the clientset
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
