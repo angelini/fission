@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"golang.org/x/time/rate"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -66,6 +67,13 @@ type (
 	}
 )
 
+func cleanupPodRateLimiter() workqueue.RateLimiter {
+	return workqueue.NewMaxOfRateLimiter(
+		workqueue.NewItemExponentialFailureRateLimiter(10*time.Second, 500*time.Second),
+		&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(0.2), 1)},
+	)
+}
+
 func NewPoolPodController(logger *zap.Logger,
 	kubernetesClient kubernetes.Interface,
 	namespace string,
@@ -84,7 +92,7 @@ func NewPoolPodController(logger *zap.Logger,
 
 		envCreateUpdateQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "EnvAddUpdateQueue"),
 		envDeleteQueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "EnvDeleteQueue"),
-		spCleanupPodQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "SpecializedPodCleanupQueue"),
+		spCleanupPodQueue:    workqueue.NewNamedRateLimitingQueue(cleanupPodRateLimiter(), "SpecializedPodCleanupQueue"),
 	}
 	funcInformer.Informer().AddEventHandler(FunctionEventHandlers(p.logger, p.kubernetesClient, p.namespace, p.enableIstio))
 	pkgInformer.Informer().AddEventHandler(PackageEventHandlers(p.logger, p.kubernetesClient, p.namespace))
@@ -147,7 +155,7 @@ func (p *PoolPodController) processRS(rs *apps.ReplicaSet) {
 			logger.Error("Failed to get key for pod", zap.Error(err))
 			continue
 		}
-		p.spCleanupPodQueue.Add(key)
+		p.spCleanupPodQueue.AddRateLimited(key)
 	}
 }
 
