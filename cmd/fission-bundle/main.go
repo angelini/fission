@@ -215,7 +215,7 @@ Options:
 		return
 	}
 	if shutdown != nil {
-		defer shutdown(ctx)
+		defer shutdown()
 	}
 
 	functionNs := getStringArgWithDefault(arguments["--namespace"], "fission-function")

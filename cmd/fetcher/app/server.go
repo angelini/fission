@@ -65,7 +65,7 @@ func Run(ctx context.Context, logger *zap.Logger) {
 		logger.Fatal("error initializing provider for OTLP", zap.Error(err))
 	}
 	if shutdown != nil {
-		defer shutdown(ctx)
+		defer shutdown()
 	}
 
 	tracer := otel.Tracer("fetcher")
