@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"go.opentelemetry.io/contrib/propagators/autoprop"
 	"go.opentelemetry.io/otel"
@@ -70,7 +71,7 @@ func getTraceExporter(ctx context.Context, logger *zap.Logger) (*otlptrace.Expor
 }
 
 // Initializes an OTLP exporter, and configures the corresponding trace and metric providers.
-func InitProvider(ctx context.Context, logger *zap.Logger, serviceName string) (func(context.Context), error) {
+func InitProvider(ctx context.Context, logger *zap.Logger, serviceName string) (func(), error) {
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
 			semconv.ServiceNameKey.String(serviceName),
@@ -95,7 +96,10 @@ func InitProvider(ctx context.Context, logger *zap.Logger, serviceName string) (
 	otel.SetTracerProvider(tracerProvider)
 	otel.SetTextMapPropagator(autoprop.NewTextMapPropagator())
 	// Shutdown will flush any remaining spans and shut down the exporter.
-	return func(ctx context.Context) {
+	return func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
 		err := tracerProvider.Shutdown(ctx)
 		if err != nil && logger != nil {
 			logger.Error("error shutting down trace provider", zap.Error(err))
