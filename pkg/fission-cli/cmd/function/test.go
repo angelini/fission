@@ -182,7 +182,7 @@ func doHTTPRequest(ctx context.Context, url string, headers []string, method, bo
 		return nil, err
 	}
 	if shutdown != nil {
-		defer shutdown(ctx)
+		defer shutdown()
 	}
 
 	tracer := otel.Tracer("fission-cli")

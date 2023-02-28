@@ -229,7 +229,7 @@ Options:
 		return
 	}
 	if shutdown != nil {
-		defer shutdown(ctx)
+		defer shutdown()
 	}
 
 	executorUrl := getStringArgWithDefault(arguments["--executorUrl"], "http://executor.fission")
