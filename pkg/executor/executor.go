@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SierraSoftworks/multicast/v2"
 	"github.com/dchest/uniuri"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -62,6 +63,8 @@ type (
 
 		requestChan chan *createFuncServiceRequest
 		fsCreateWg  sync.Map
+
+		exactlyOneChans sync.Map
 	}
 
 	createFuncServiceRequest struct {
@@ -116,11 +119,46 @@ func (executor *Executor) serveCreateFuncServices() {
 		req := <-executor.requestChan
 		fnMetadata := &req.function.ObjectMeta
 
-		if req.function.Spec.InvokeStrategy.ExecutionStrategy.ExecutorType == fv1.ExecutorTypePoolmgr {
-			go func() {
-				buffer := 10 // add some buffer time for specialization
-				specializationTimeout := req.function.Spec.InvokeStrategy.ExecutionStrategy.SpecializationTimeout
+		var exactlyOneChan *multicast.Channel[*fscache.FuncSvc]
+		fnKey := fmt.Sprintf("%s:%s", req.function.UID, fnMetadata.ResourceVersion)
 
+		if req.function.Spec.InvokeStrategy.ExecutionStrategy.ExecutorType == fv1.ExecutorTypePoolmgr {
+			buffer := 10 // add some buffer time for specialization
+			specializationTimeout := req.function.Spec.InvokeStrategy.ExecutionStrategy.SpecializationTimeout
+
+			// This is a special case to ensure that if a Function spec has a concurrency of one
+			// we only ever spawn one of those pods.
+			// If we end up in this create function and see that another thread is already specializing
+			// we wait for it to broadcast the result instead of creating a new pod.
+			if req.function.Spec.Concurrency == 1 {
+				maybeChan, loaded := executor.exactlyOneChans.LoadOrStore(fnKey, multicast.New[*fscache.FuncSvc]())
+
+				exactlyOneChan = maybeChan.(*multicast.Channel[*fscache.FuncSvc])
+				listener := exactlyOneChan.Listen()
+
+				if loaded {
+					go func() {
+						ctx, cancel := context.WithTimeout(req.context, time.Duration(specializationTimeout+buffer)*time.Second)
+						defer cancel()
+
+						select {
+						case <-ctx.Done():
+							req.respChan <- &createFuncServiceResponse{
+								funcSvc: nil,
+								err:     fmt.Errorf("timed out waiting for exactly one service function"),
+							}
+						case fsvc := <-listener.C:
+							req.respChan <- &createFuncServiceResponse{
+								funcSvc: fsvc,
+								err:     nil,
+							}
+						}
+					}()
+					continue
+				}
+			}
+
+			go func() {
 				// set minimum specialization timeout to avoid illegal input and
 				// compatibility problem when applying old spec file that doesn't
 				// have specialization timeout field.
@@ -133,6 +171,14 @@ func (executor *Executor) serveCreateFuncServices() {
 				defer cancel()
 
 				fsvc, err := executor.createServiceForFunction(fnSpecializationTimeoutContext, req.function)
+				if exactlyOneChan != nil {
+					executor.exactlyOneChans.Delete(fnKey)
+					if err == nil {
+						exactlyOneChan.C <- fsvc
+					}
+					exactlyOneChan.Close()
+				}
+
 				req.respChan <- &createFuncServiceResponse{
 					funcSvc: fsvc,
 					err:     err,
