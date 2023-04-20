@@ -70,8 +70,8 @@ type (
 
 func cleanupPodRateLimiter() workqueue.RateLimiter {
 	return workqueue.NewMaxOfRateLimiter(
-		workqueue.NewItemExponentialFailureRateLimiter(10*time.Second, 500*time.Second),
-		&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(0.2), 1)},
+		workqueue.NewItemExponentialFailureRateLimiter(time.Second, 60*time.Second),
+		&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(1), 5)},
 	)
 }
 
