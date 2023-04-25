@@ -226,12 +226,14 @@ func (cn *Container) getDeploymentSpec(ctx context.Context, fn *fv1.Function, ta
 		Name:                   fn.ObjectMeta.Name,
 		ImagePullPolicy:        cn.runtimeImagePullPolicy,
 		TerminationMessagePath: "/dev/termination-log",
+		// if the pod is specialized (i.e. has secrets), wait 60 seconds for the routers endpoint cache to expire before shutting down
 		Lifecycle: &apiv1.Lifecycle{
 			PreStop: &apiv1.LifecycleHandler{
 				Exec: &apiv1.ExecAction{
 					Command: []string{
-						"/bin/sleep",
-						fmt.Sprintf("%v", gracePeriodSeconds),
+						"bash",
+						"-c",
+						"test $(ls /secrets/) && sleep 63 || exit 0",
 					},
 				},
 			},
