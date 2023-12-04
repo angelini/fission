@@ -25,7 +25,7 @@ func TestPublisher(t *testing.T) {
 	shutdown, err := otelUtils.InitProvider(ctx, logger, fnName)
 	assert.NoError(t, err)
 	if shutdown != nil {
-		defer shutdown(ctx)
+		defer shutdown()
 	}
 
 	wp := MakeWebhookPublisher(logger, s.URL)

@@ -41,6 +41,8 @@ type ClientGenerator struct {
 
 func (cg *ClientGenerator) getRestConfig() (*rest.Config, error) {
 	if cg.restConfig != nil {
+		cg.restConfig.QPS = 200
+		cg.restConfig.Burst = 500
 		return cg.restConfig, nil
 	}
 
@@ -49,6 +51,10 @@ func (cg *ClientGenerator) getRestConfig() (*rest.Config, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	cg.restConfig.QPS = 200
+	cg.restConfig.Burst = 500
+
 	return cg.restConfig, nil
 }
 
