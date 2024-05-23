@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"golang.org/x/time/rate"
 	apps "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -69,11 +70,19 @@ type (
 	}
 )
 
+func cleanupPodRateLimiter() workqueue.RateLimiter {
+	return workqueue.NewMaxOfRateLimiter(
+		workqueue.NewItemExponentialFailureRateLimiter(time.Second, 60*time.Second),
+		&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(1), 1)},
+	)
+}
+
 func NewPoolPodController(ctx context.Context, logger *zap.Logger,
 	kubernetesClient kubernetes.Interface,
 	enableIstio bool,
 	finformerFactory map[string]genInformer.SharedInformerFactory,
-	gpmInformerFactory map[string]k8sInformers.SharedInformerFactory) (*PoolPodController, error) {
+	gpmInformerFactory map[string]k8sInformers.SharedInformerFactory,
+) (*PoolPodController, error) {
 	logger = logger.Named("pool_pod_controller")
 	p := &PoolPodController{
 		logger:               logger,
@@ -86,7 +95,7 @@ func NewPoolPodController(ctx context.Context, logger *zap.Logger,
 		podListerSynced:      make(map[string]k8sCache.InformerSynced),
 		envCreateUpdateQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "EnvAddUpdateQueue"),
 		envDeleteQueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "EnvDeleteQueue"),
-		spCleanupPodQueue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "SpecializedPodCleanupQueue"),
+		spCleanupPodQueue:    workqueue.NewNamedRateLimitingQueue(cleanupPodRateLimiter(), "SpecializedPodCleanupQueue"),
 	}
 	if p.enableIstio {
 		for _, factory := range finformerFactory {
@@ -153,7 +162,12 @@ func (p *PoolPodController) processRS(rs *apps.ReplicaSet) {
 		return
 	}
 	logger := p.logger.With(zap.String("rs", rs.Name), zap.String("namespace", rs.Namespace))
-	logger.Debug("replica set has zero replica count")
+
+	// wait for unspecialized pods to finish booting before beginning to cleanup specialized ones
+	delay := 15 * time.Second
+	logger.Info("replica set has zero replica count, delaying before cleanup", zap.Stringer("delay", delay))
+	time.Sleep(delay)
+
 	// List all specialized pods and schedule for cleanup
 	rsLabelMap, err := metav1.LabelSelectorAsMap(rs.Spec.Selector)
 	if err != nil {
@@ -178,7 +192,7 @@ func (p *PoolPodController) processRS(rs *apps.ReplicaSet) {
 			logger.Error("Failed to get key for pod", zap.Error(err))
 			continue
 		}
-		p.spCleanupPodQueue.Add(key)
+		p.spCleanupPodQueue.AddRateLimited(key)
 	}
 }
 
@@ -188,7 +202,7 @@ func (p *PoolPodController) handleRSAdd(obj interface{}) {
 		p.logger.Error("unexpected type when adding rs to pool pod controller", zap.Any("obj", obj))
 		return
 	}
-	p.processRS(rs)
+	go p.processRS(rs)
 }
 
 func (p *PoolPodController) handleRSUpdate(oldObj interface{}, newObj interface{}) {
@@ -197,7 +211,7 @@ func (p *PoolPodController) handleRSUpdate(oldObj interface{}, newObj interface{
 		p.logger.Error("unexpected type when updating rs to pool pod controller", zap.Any("obj", newObj))
 		return
 	}
-	p.processRS(rs)
+	go p.processRS(rs)
 }
 
 func (p *PoolPodController) handleRSDelete(obj interface{}) {
@@ -214,7 +228,7 @@ func (p *PoolPodController) handleRSDelete(obj interface{}) {
 			return
 		}
 	}
-	p.processRS(rs)
+	go p.processRS(rs)
 }
 
 func (p *PoolPodController) enqueueEnvAdd(obj interface{}) {

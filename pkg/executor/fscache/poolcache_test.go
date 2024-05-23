@@ -224,7 +224,6 @@ func TestPoolCacheRequests(t *testing.T) {
 				simultaneous = 1
 			}
 			for i := 1; i <= tt.requests; i++ {
-				reqno := i
 				wg.Add(1)
 				go func(reqno int) {
 					defer wg.Done()
@@ -232,11 +231,10 @@ func TestPoolCacheRequests(t *testing.T) {
 					if err != nil {
 						code, _ := ferror.GetHTTPError(err)
 						if code == http.StatusNotFound {
-							atomic.AddUint64(&svcCounter, 1)
-							address := fmt.Sprintf("svc-%d", atomic.LoadUint64(&svcCounter))
-							p.SetSvcValue(context.Background(), key, address, &FuncSvc{
-								Name: address,
+							p.SetSvcValue(context.Background(), key, fmt.Sprintf("svc-%d", svcCounter), &FuncSvc{
+								Name: "value",
 							}, resource.MustParse("45m"), tt.rpp, tt.retainPods)
+							atomic.AddUint64(&svcCounter, 1)
 						} else {
 							t.Log(reqno, "=>", err)
 							atomic.AddUint64(&failedRequests, 1)
@@ -246,12 +244,9 @@ func TestPoolCacheRequests(t *testing.T) {
 							t.Log(reqno, "=>", "svc is nil")
 							atomic.AddUint64(&failedRequests, 1)
 						}
-						// } else {
-						// 	t.Log(reqno, "=>", svc.Name)
-						// }
 					}
-				}(reqno)
-				if reqno%simultaneous == 0 {
+				}(i)
+				if i%simultaneous == 0 {
 					wg.Wait()
 				}
 			}
@@ -263,11 +258,10 @@ func TestPoolCacheRequests(t *testing.T) {
 			for i := 0; i < tt.concurrency; i++ {
 				for j := 0; j < tt.rpp; j++ {
 					wg.Add(1)
-					svcno := i
-					go func(svcno int) {
+					go func(i int) {
 						defer wg.Done()
-						p.MarkAvailable(key, fmt.Sprintf("svc-%d", svcno+1))
-					}(svcno)
+						p.MarkAvailable(key, fmt.Sprintf("svc-%d", i))
+					}(i)
 				}
 			}
 			wg.Wait()
@@ -276,9 +270,8 @@ func TestPoolCacheRequests(t *testing.T) {
 					UID:        "func",
 					Generation: 2,
 				}
-				address := fmt.Sprintf("svc-%d", svcCounter)
-				p.SetSvcValue(context.Background(), newKey, address, &FuncSvc{
-					Name: address,
+				p.SetSvcValue(context.Background(), newKey, fmt.Sprintf("svc-%d", svcCounter), &FuncSvc{
+					Name: "value",
 				}, resource.MustParse("45m"), tt.rpp, tt.retainPods)
 				funcSvc := p.ListAvailableValue()
 				require.Equal(t, tt.concurrency, len(funcSvc))
