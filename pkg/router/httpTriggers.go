@@ -143,6 +143,13 @@ func versionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func NotFoundHandler(ts *HTTPTriggerSet) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ts.logger.Info("404 Not Found", zap.String("req_method", r.Method), zap.String("url_path", r.URL.Path), zap.String("req_address", r.RemoteAddr), zap.Int("route_table_size", len(ts.functions)))
+		w.WriteHeader(http.StatusNotFound)
+	}
+}
+
 func (ts *HTTPTriggerSet) getRouter(fnTimeoutMap map[types.UID]int) (*mux.Router, error) {
 	featureConfig, err := config.GetFeatureConfig(ts.logger)
 	if err != nil {
@@ -150,6 +157,9 @@ func (ts *HTTPTriggerSet) getRouter(fnTimeoutMap map[types.UID]int) (*mux.Router
 	}
 
 	muxRouter := mux.NewRouter()
+
+	muxRouter.NotFoundHandler = http.HandlerFunc(NotFoundHandler(ts))
+
 	muxRouter.Use(metrics.HTTPMetricMiddleware)
 	if featureConfig.AuthConfig.IsEnabled {
 		muxRouter.Use(authMiddleware(featureConfig))
@@ -434,6 +444,7 @@ func (ts *HTTPTriggerSet) updateRouter(ctx context.Context) {
 			continue
 		}
 		ts.mutableRouter.updateRouter(router)
+		ts.logger.Info("updated router", zap.Int("triggers", len(ts.triggers)), zap.Int("functions", len(ts.functions)))
 
 		if !ts.hasFunctionsAndTriggers.Load() && len(ts.triggers) > 0 && len(ts.functions) > 0 {
 			// let the startup probe know that the router is ready
