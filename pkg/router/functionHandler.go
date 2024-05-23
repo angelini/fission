@@ -650,7 +650,7 @@ func (fh functionHandler) getServiceEntryFromExecutor(ctx context.Context) (serv
 	service, err := fh.executor.GetServiceForFunction(fContext, fh.function)
 	if err != nil {
 		statusCode, errMsg := ferror.GetHTTPError(err)
-		logger.Info("error from GetServiceForFunction",
+		logger.Error("error from GetServiceForFunction",
 			zap.Error(err),
 			zap.String("error_message", errMsg),
 			zap.Any("function", fh.function),
@@ -660,7 +660,7 @@ func (fh functionHandler) getServiceEntryFromExecutor(ctx context.Context) (serv
 	// parse the address into url
 	svcURL, err := url.Parse(fmt.Sprintf("http://%v", service))
 	if err != nil {
-		logger.Info("error parsing service url",
+		logger.Error("error parsing service url",
 			zap.Error(err),
 			zap.String("service_url", svcURL.String()))
 		return nil, err

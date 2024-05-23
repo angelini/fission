@@ -60,7 +60,7 @@ func (executor *Executor) getServiceForFunctionAPI(w http.ResponseWriter, r *htt
 	logger := otelUtils.LoggerWithTraceID(ctx, executor.logger)
 
 	// Check function -> svc cache
-	logger.Info("checking for cached function service",
+	logger.Debug("checking for cached function service",
 		zap.String("function_name", fn.ObjectMeta.Name),
 		zap.String("function_namespace", fn.ObjectMeta.Namespace))
 	if t == fv1.ExecutorTypePoolmgr && !fn.Spec.OnceOnly {

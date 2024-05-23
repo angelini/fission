@@ -18,7 +18,6 @@ package router
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -144,9 +143,11 @@ func versionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func NotFoundHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("404 Not Found: %s %s from %s at %s", r.Method, r.URL.Path, r.RemoteAddr, time.Now().Format(time.RFC3339))
-	w.WriteHeader(http.StatusNotFound)
+func NotFoundHandler(ts *HTTPTriggerSet) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ts.logger.Info("404 Not Found", zap.String("req_method", r.Method), zap.String("url_path", r.URL.Path), zap.String("req_address", r.RemoteAddr), zap.Int("route_table_size", len(ts.functions)))
+		w.WriteHeader(http.StatusNotFound)
+	}
 }
 
 func (ts *HTTPTriggerSet) getRouter(fnTimeoutMap map[types.UID]int) (*mux.Router, error) {
@@ -157,7 +158,7 @@ func (ts *HTTPTriggerSet) getRouter(fnTimeoutMap map[types.UID]int) (*mux.Router
 
 	muxRouter := mux.NewRouter()
 
-	muxRouter.NotFoundHandler = http.HandlerFunc(NotFoundHandler)
+	muxRouter.NotFoundHandler = http.HandlerFunc(NotFoundHandler(ts))
 
 	muxRouter.Use(metrics.HTTPMetricMiddleware)
 	if featureConfig.AuthConfig.IsEnabled {
