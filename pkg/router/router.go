@@ -103,6 +103,7 @@ func serve(ctx context.Context, logger *zap.Logger, mgr manager.Interface, port 
 // Start starts a router
 func Start(ctx context.Context, clientGen crd.ClientGeneratorInterface, logger *zap.Logger, mgr manager.Interface, port int, executor eclient.ClientInterface) error {
 	fmap := makeFunctionServiceMap(logger, time.Minute)
+	logger.Info("starting router with a new functionServiceMap")
 
 	fissionClient, err := clientGen.GetFissionClient()
 	if err != nil {
